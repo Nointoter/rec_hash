@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{self, BufRead, Write};
 use std::path::Path;
 use std::time::Instant;
@@ -83,25 +83,39 @@ fn start_collatz_test(n: u64, output_file: &mut File, cache: &mut Cache) -> io::
 }
 
 fn main() -> io::Result<()> {
-    let n = 100; // Можно изменить значение для тестирования
+    let n = 1000000; // Можно изменить значение для тестирования
     
     // Создаем хеш-таблицу (кэш)
     let mut cache = Cache::new();
     
-    // Загружаем кэш из файла
-    let cache_file = "cache\\collatz_cache.txt";
-    if Path::new(cache_file).exists() {
-        load_cache_from_file(cache_file, &mut cache)?;
+    // Пути к файлам
+    let cache_dir = "cache";
+    let cache_file = format!("{}/collatz_cache.txt", cache_dir);
+    let results_dir = "results";
+    let results_file = format!("{}/collatz_output.txt", results_dir);
+
+    // Проверяем и создаем директории, если их нет
+    if !Path::new(cache_dir).exists() {
+        fs::create_dir(cache_dir)?;
+    }
+    
+    if !Path::new(results_dir).exists() {
+        fs::create_dir(results_dir)?;
+    }
+
+    // Загружаем кэш из файла, если файл существует
+    if Path::new(&cache_file).exists() {
+        load_cache_from_file(&cache_file, &mut cache)?;
     }
     
     // Создаем файл для записи новых результатов
-    let mut output_file = File::create("results\\collatz_output.txt")?;
+    let mut output_file = File::create(&results_file)?;
     
     // Запускаем тесты
     start_collatz_test(n, &mut output_file, &mut cache)?;
     
     // Сохраняем обновленный кэш в файл
-    save_cache_to_file(cache_file, &cache)?;
+    save_cache_to_file(&cache_file, &cache)?;
 
     Ok(())
 }
