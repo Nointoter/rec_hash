@@ -89,13 +89,13 @@ fn main() -> io::Result<()> {
     let mut cache = Cache::new();
     
     // Загружаем кэш из файла
-    let cache_file = "collatz_cache.txt";
+    let cache_file = "cache\\collatz_cache.txt";
     if Path::new(cache_file).exists() {
         load_cache_from_file(cache_file, &mut cache)?;
     }
     
     // Создаем файл для записи новых результатов
-    let mut output_file = File::create("collatz_output.txt")?;
+    let mut output_file = File::create("results\\collatz_output.txt")?;
     
     // Запускаем тесты
     start_collatz_test(n, &mut output_file, &mut cache)?;
