@@ -1,13 +1,28 @@
+use serde::{Serialize, Deserialize};
+use serde_json;
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::{self, BufRead, Write};
+use std::io::{self, Write};
 use std::path::Path;
 use std::time::Instant;
 
 // Определяем тип для кэша
 type Cache = HashMap<u64, u64>;
 
-// Рекурсивная функция с кэшированием
+// Определяем структуру для кэша
+#[derive(Serialize, Deserialize, Clone)]
+struct CacheWrapper {
+    cache: Cache,
+}
+
+// Определяем структуру для результата
+#[derive(Serialize, Deserialize)]
+struct ResultEntry {
+    input: u64,
+    result: u64,
+    time_taken: String,
+}
+
 fn collatz(n: u64, cache: &mut Cache) -> u64 {
     if n == 1 {
         return 0;
@@ -21,7 +36,7 @@ fn collatz(n: u64, cache: &mut Cache) -> u64 {
         n / 2
     } else {
         3 * n + 1
-    }; 
+    };
 
     let result = 1 + collatz(next, cache);
 
@@ -30,42 +45,26 @@ fn collatz(n: u64, cache: &mut Cache) -> u64 {
     result
 }
 
-// Функция для чтения из файла и заполнения кэша
-fn load_cache_from_file(filename: &str, cache: &mut Cache) -> io::Result<()> {
-    let file = File::open(filename)?;
-    let reader = io::BufReader::new(file);
-
-    for line in reader.lines() {
-        let line = line?;
-        let parts: Vec<&str> = line.split(", ").collect();
-        
-        if parts.len() >= 2 {
-            // Парсим значение из строки "n = result"
-            let n_part = parts[0].split('=').nth(1).unwrap().trim();
-            let result_part = parts[1].split('=').nth(1).unwrap().trim();
-            
-            let n: u64 = n_part.parse().unwrap();
-            let result: u64 = result_part.parse().unwrap();
-            
-            cache.insert(n, result);
-        }
+fn load_cache_from_file(filename: &str) -> io::Result<Cache> {
+    if Path::new(filename).exists() {
+        let file = File::open(filename)?;
+        let cache_wrapper: CacheWrapper = serde_json::from_reader(file)?;
+        Ok(cache_wrapper.cache)
+    } else {
+        Ok(HashMap::new())
     }
-    
-    Ok(())
 }
 
-// Функция для сохранения кэша в файл
 fn save_cache_to_file(filename: &str, cache: &Cache) -> io::Result<()> {
-    let mut file = File::create(filename)?;
-
-    for (key, value) in cache {
-        writeln!(file, "n = {}, result = {}", key, value)?;
-    }
-
+    let cache_wrapper = CacheWrapper {
+        cache: cache.clone(),
+    };
+    let file = File::create(filename)?;
+    serde_json::to_writer(file, &cache_wrapper)?;
     Ok(())
 }
 
-fn start_collatz_test(n: u64, output_file: &mut File, cache: &mut Cache) -> io::Result<()> {
+fn start_collatz_test(n: u64, results: &mut Vec<ResultEntry>, cache: &mut Cache) -> io::Result<()> {
     for i in 1..=n {
         // Запускаем таймер
         let start_time = Instant::now();
@@ -75,26 +74,36 @@ fn start_collatz_test(n: u64, output_file: &mut File, cache: &mut Cache) -> io::
         
         // Останавливаем таймер
         let duration = start_time.elapsed();
+        let duration_str = format!("{:?}", duration);
 
-        writeln!(output_file, "Collatz({}) = {}, Time taken: {:?}", i, result, duration)?;
+        // Добавляем запись в результаты
+        results.push(ResultEntry {
+            input: i,
+            result,
+            time_taken: duration_str,
+        });
     }
     
     Ok(())
 }
 
+fn save_results_to_file(filename: &str, results: &[ResultEntry]) -> io::Result<()> {
+    let file = File::create(filename)?;
+    serde_json::to_writer(file, results)?;
+    Ok(())
+}
+
 fn main() -> io::Result<()> {
-    let n = 1000000; // Можно изменить значение для тестирования
-    
+    let n = 10000; // Можно изменить значение для тестирования
+
     // Создаем хеш-таблицу (кэш)
-    let mut cache = Cache::new();
-    
-    // Пути к файлам
-    let cache_dir = "cache";
-    let cache_file = format!("{}/collatz_cache.txt", cache_dir);
-    let results_dir = "results";
-    let results_file = format!("{}/collatz_output.txt", results_dir);
+    let cache_file = "cache/collatz_cache.json";
+    let results_file = "results/collatz_output.json";
 
     // Проверяем и создаем директории, если их нет
+    let cache_dir = "cache";
+    let results_dir = "results";
+
     if !Path::new(cache_dir).exists() {
         fs::create_dir(cache_dir)?;
     }
@@ -104,18 +113,19 @@ fn main() -> io::Result<()> {
     }
 
     // Загружаем кэш из файла, если файл существует
-    if Path::new(&cache_file).exists() {
-        load_cache_from_file(&cache_file, &mut cache)?;
-    }
-    
-    // Создаем файл для записи новых результатов
-    let mut output_file = File::create(&results_file)?;
-    
+    let mut cache = load_cache_from_file(cache_file)?;
+
+    // Создаем вектор для записи результатов
+    let mut results = Vec::new();
+
     // Запускаем тесты
-    start_collatz_test(n, &mut output_file, &mut cache)?;
-    
+    start_collatz_test(n, &mut results, &mut cache)?;
+
     // Сохраняем обновленный кэш в файл
-    save_cache_to_file(&cache_file, &cache)?;
+    save_cache_to_file(cache_file, &cache)?;
+
+    // Сохраняем результаты в JSON-файл
+    save_results_to_file(results_file, &results)?;
 
     Ok(())
 }
